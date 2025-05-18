@@ -77,70 +77,8 @@ sequenceDiagram
 
 ### Class Diagram
 
-```mermaid
-classDiagram
-    class MessageContext {
-        -RawPayload []byte
-        -ContentType string
-        -processedPayload PayloadObject
-        -payloadLock sync.RWMutex
-        -engine *ExpressionEngine
-        -payloadFactory *PayloadFactory
-        +NewMessageContext()
-        +EvaluateExpression(string) QueryResult, error
-        -ensurePayloadParsed() error
-        +GetProcessedPayload() PayloadObject, error
-    }
-    
-    class ExpressionEngine {
-        -payloadFactory *PayloadFactory
-        +NewEngine()
-        +Evaluate(PayloadObject, string) QueryResult, error
-        -evaluateSingleExpression(PayloadObject, string) QueryResult, error
-    }
-    
-    class PayloadFactory {
-        +NewPayloadFactory()
-        +CreatePayload([]byte, string) PayloadObject, error
-    }
-    
-    class PayloadObject {
-        <<interface>>
-        +GetRawBytes() []byte
-        +GetContentType() string
-        +Query(string) QueryResult, error
-        +AsString() string, error
-        +GetUnderlying() interface{}
-    }
-    
-    class QueryResult {
-        +Value interface{}
-        +Type ResultType
-    }
-    
-    class XMLPayload {
-        -rawContent []byte
-        -parsedDoc *xmlquery.Node
-        -contentType string
-        +Query(string) QueryResult, error
-    }
-    
-    class JSONPayload {
-        -rawContent []byte
-        -jsonResult gjson.Result
-        -contentType string
-        +Query(string) QueryResult, error
-    }
-    
-    MessageContext --> ExpressionEngine
-    MessageContext --> PayloadFactory
-    MessageContext --> PayloadObject
-    ExpressionEngine --> PayloadFactory
-    PayloadObject <|.. XMLPayload
-    PayloadObject <|.. JSONPayload
-    PayloadFactory --> PayloadObject
-    PayloadObject --> QueryResult
-```
+![Class Diagram](assets/images/class_diagram.png)
+
 
 ## Usage Examples
 
@@ -216,7 +154,7 @@ fmt.Printf("Item: %s\n", result.Value)
 
 - github.com/antchfx/xpath: XPath expression evaluation
 - github.com/antchfx/xmlquery: XML parsing and query
-- github.com/tidwall/gjson: Fast JSON parsing and query
+- github.com/tidwall.gjson: Fast JSON parsing and query
 
 ## Error Handling
 

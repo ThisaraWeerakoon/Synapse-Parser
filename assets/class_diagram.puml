@@ -1,0 +1,76 @@
+@startuml PayloadProcessor
+
+interface PayloadObject {
+    +GetRawBytes(): []byte
+    +GetContentType(): string
+    +Query(expression string): (QueryResult, error)
+    +AsString(): (string, error)
+    +GetUnderlying(): interface{}
+}
+
+class XMLPayload {
+    -rawContent: []byte
+    -parsedDoc: *xmlquery.Node
+    -contentType: string
+    +Query(expression string): (QueryResult, error)
+}
+
+class JSONPayload {
+    -rawContent: []byte
+    -jsonResult: gjson.Result
+    -contentType: string
+    +Query(expression string): (QueryResult, error)
+}
+
+class PayloadFactory {
+    +NewPayloadFactory(): *PayloadFactory
+    +CreatePayload(raw []byte, contentType string): (PayloadObject, error)
+}
+
+class ExpressionEngine {
+    -payloadFactory: *PayloadFactory
+    +NewEngine(): *ExpressionEngine
+    +Evaluate(payload PayloadObject, fullExpression string): (QueryResult, error)
+    -evaluateSingleExpression(payload PayloadObject, expressionPart string): (QueryResult, error)
+}
+
+class MessageContext {
+    -RawPayload: []byte
+    -ContentType: string
+    -processedPayload: PayloadObject
+    -payloadLock: sync.RWMutex
+    -engine: *ExpressionEngine
+    -payloadFactory: *PayloadFactory
+    +NewMessageContext(): *MessageContext
+    +EvaluateExpression(fullExpression string): (QueryResult, error)
+    -ensurePayloadParsed(): error
+    +GetProcessedPayload(): (PayloadObject, error)
+}
+
+class QueryResult {
+    +Value: interface{}
+    +Type: ResultType
+}
+
+enum ResultType {
+    ScalarResult
+    NodeSetResult
+    ObjectResult
+    ArrayResult
+    StringResult
+    BooleanResult
+    NumberResult
+    UnknownResult
+}
+
+PayloadObject <|.. XMLPayload
+PayloadObject <|.. JSONPayload
+PayloadFactory --> PayloadObject: creates >
+MessageContext --> ExpressionEngine: uses >
+MessageContext --> PayloadFactory: uses >
+MessageContext --> PayloadObject: maintains >
+ExpressionEngine --> PayloadFactory: uses >
+PayloadObject --> QueryResult: returns >
+QueryResult --> ResultType: has >
+
+@enduml
