@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	xpathPrefix      = "xpath:"
-	jsonpathPrefix   = "jsonpath:"
+	xpathPrefix       = "xpath:"
+	jsonpathPrefix    = "jsonpath:"
 	extractAsJSONPipe = "extractAsJSON"
 	extractAsXMLPipe  = "extractAsXML"
 )
@@ -30,9 +30,9 @@ func (ee *ExpressionEngine) Evaluate(currentPayload PayloadObject, fullExpressio
 	parts := strings.Split(fullExpression, "|")
 	var currentResult QueryResult
 	var err error
-	
+
 	// Initial payload for the first part of the expression
-	activePayload := currentPayload 
+	activePayload := currentPayload
 
 	for i, part := range parts {
 		trimmedPart := strings.TrimSpace(part)
@@ -51,52 +51,60 @@ func (ee *ExpressionEngine) Evaluate(currentPayload PayloadObject, fullExpressio
 				}
 			}
 
-			pipeAndNextExpr := strings.Fields(trimmedPart) // Simple split by space
-			if len(pipeAndNextExpr) < 2 {
-				return QueryResult{}, &ErrEvaluationFailed{Expression: fullExpression, Reason: fmt.Sprintf("invalid pipe operation format: %s", trimmedPart)}
-			}
-			
-			pipeOperation := pipeAndNextExpr[0]
-			nextExpression := strings.Join(pipeAndNextExpr[1:], " ")
+			// Check if the part is exactly a standalone transformation operation
+			if trimmedPart == extractAsJSONPipe || trimmedPart == extractAsXMLPipe {
+				// These are standalone transformation operations
+				pipeOperation := trimmedPart
 
+				switch pipeOperation {
+				case extractAsJSONPipe:
+					// Create a new JSONPayload from the string result of the previous step
+					intermediatePayload, err := ee.payloadFactory.CreatePayload([]byte(prevResultStr), "application/json")
+					if err != nil {
+						return QueryResult{}, &ErrEvaluationFailed{
+							Expression: fullExpression,
+							Reason:     fmt.Sprintf("failed to create intermediate JSON payload for pipe '%s'", pipeOperation),
+							InnerError: err,
+						}
+					}
+					activePayload = intermediatePayload
+					// Since this is a standalone transformation with no query, return the entire document
+					// This matches the behavior when users just want to convert formats without queries
+					currentResult = QueryResult{Value: prevResultStr, Type: StringResult}
+				case extractAsXMLPipe:
+					// Create a new XMLPayload from the string result
+					intermediatePayload, err := ee.payloadFactory.CreatePayload([]byte(prevResultStr), "application/xml")
+					if err != nil {
+						return QueryResult{}, &ErrEvaluationFailed{
+							Expression: fullExpression,
+							Reason:     fmt.Sprintf("failed to create intermediate XML payload for pipe '%s'", pipeOperation),
+							InnerError: err,
+						}
+					}
+					activePayload = intermediatePayload
+					// Since this is a standalone transformation with no query, return the entire document
+					currentResult = QueryResult{Value: prevResultStr, Type: StringResult}
+				}
+				continue
+			}
 
-			switch pipeOperation {
-			case "extractAsJSON":
-				// Create a new JSONPayload from the string result of the previous step
-				intermediatePayload, err := ee.payloadFactory.CreatePayload([]byte(prevResultStr), "application/json")
+			// Handle direct expression cases (xpath: or jsonpath:)
+			if strings.HasPrefix(trimmedPart, jsonpathPrefix) || strings.HasPrefix(trimmedPart, xpathPrefix) {
+				// Direct query without transformation operator
+				// For cases like "xpath:... | jsonpath:..."
+				currentResult, err = ee.evaluateSingleExpression(activePayload, trimmedPart)
 				if err != nil {
-					return QueryResult{}, &ErrEvaluationFailed{
-						Expression: fullExpression,
-						Reason:     fmt.Sprintf("failed to create intermediate JSON payload for pipe '%s'", pipeOperation),
-						InnerError: err,
-					}
+					return QueryResult{}, fmt.Errorf("error in expression part '%s': %w", trimmedPart, err)
 				}
-				activePayload = intermediatePayload
-			case "extractAsXML":
-				// Create a new XMLPayload from the string result
-				intermediatePayload, err := ee.payloadFactory.CreatePayload([]byte(prevResultStr), "application/xml")
-				if err != nil {
-					return QueryResult{}, &ErrEvaluationFailed{
-						Expression: fullExpression,
-						Reason:     fmt.Sprintf("failed to create intermediate XML payload for pipe '%s'", pipeOperation),
-						InnerError: err,
-					}
-				}
-				activePayload = intermediatePayload
-			default:
-				return QueryResult{}, &ErrUnsupportedExpression{Expression: fmt.Sprintf("unknown pipe operation: %s", pipeOperation)}
+				continue
 			}
-			
-			// Evaluate the next part of the expression on the new intermediate payload
-			currentResult, err = ee.evaluateSingleExpression(activePayload, nextExpression)
-			if err != nil {
-				return QueryResult{}, fmt.Errorf("error in chained expression part '%s' after pipe '%s': %w", nextExpression, pipeOperation, err)
-			}
+
+			// For all other cases, assume it's an unsupported pipe operation
+			return QueryResult{}, &ErrUnsupportedExpression{Expression: fmt.Sprintf("unsupported pipe operation: %s", trimmedPart)}
 		}
 	}
 	return currentResult, nil
 }
-
 
 // evaluateSingleExpression evaluates a simple, non-piped expression part.
 func (ee *ExpressionEngine) evaluateSingleExpression(pld PayloadObject, expressionPart string) (QueryResult, error) {
@@ -108,7 +116,7 @@ func (ee *ExpressionEngine) evaluateSingleExpression(pld PayloadObject, expressi
 		return pld.Query(actualExpr)
 	} else if strings.HasPrefix(expressionPart, jsonpathPrefix) {
 		if pld.GetContentType() != "application/json" {
-				return QueryResult{}, &ErrInvalidPayloadForOperation{Operation: "JSONPath", PayloadType: pld.GetContentType(), Reason: "JSONPath requires JSON payload"}
+			return QueryResult{}, &ErrInvalidPayloadForOperation{Operation: "JSONPath", PayloadType: pld.GetContentType(), Reason: "JSONPath requires JSON payload"}
 		}
 		actualExpr := strings.TrimPrefix(expressionPart, jsonpathPrefix)
 		return pld.Query(actualExpr)
